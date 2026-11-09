@@ -1,7 +1,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (n) => Number(n).toLocaleString('uz-UZ') + ' so‘m';
-const CATS = ['Elektronika', 'Kiyim', 'Uy-ro‘zg‘or', 'Avtomobil', 'Ko‘chmas mulk', 'Boshqa'];
+const money = (n, cur) => (cur === 'USD' ? '$' + Number(n).toLocaleString('en-US') : Number(n).toLocaleString('uz-UZ') + ' so‘m');
+const CATS = ['Payvandlash va generatorlar', 'Nasoslar', 'Shlanglar va quvurlar', 'Boshqa'];
 const STATUS = { pending: 'Tekshiruvda', active: 'Faol', rejected: 'Rad etilgan' };
 
 const app = $('#app');
@@ -31,7 +31,7 @@ function nav() {
 function card(p) {
   return `<a class="card" href="#/product/${p.id}">
     <h3>${esc(p.title)}</h3>
-    <b class="price">${money(p.price)}</b><br>
+    <b class="price">${money(p.price, p.currency)}</b><br>
     <small>${esc(p.city)} · ${esc(p.category)}</small></a>`;
 }
 
@@ -59,7 +59,7 @@ async function product(id) {
   app.innerHTML = `
     <div class="detail">
       <h2>${esc(p.title)}</h2>
-      <p class="price">${money(p.price)}</p>
+      <p class="price">${money(p.price, p.currency)}${p.retail_price ? ` <small>(chakana: ${money(p.retail_price, p.currency)})</small>` : ''}</p>
       <p>${esc(p.category)} · ${esc(p.city)} · Sotuvchi: ${esc(p.seller_name)}</p>
       <p class="desc">${esc(p.description)}</p>
       <h4>Bog‘lanish</h4>
@@ -113,7 +113,7 @@ async function mine() {
   const items = await api('GET', '/api/my/products');
   app.innerHTML = `<h2>Mening e‘lonlarim</h2>` +
     (items.map((p) => `<a class="row" href="#/product/${p.id}">
-      <span>${esc(p.title)}</span><span>${money(p.price)}</span>
+      <span>${esc(p.title)}</span><span>${money(p.price, p.currency)}</span>
       <em class="st ${p.status}">${STATUS[p.status]}</em></a>`).join('') || '<p>Hozircha e‘lon yo‘q</p>');
 }
 
@@ -176,39 +176,6 @@ function authView(isReg) {
   };
 }
 
-async function admin() {
-  if (!me || me.role !== 'admin') return (location.hash = '#/');
-  const [stats, prods, users] = await Promise.all([
-    api('GET', '/api/admin/stats'),
-    api('GET', '/api/admin/products?status=pending'),
-    api('GET', '/api/admin/users'),
-  ]);
-  app.innerHTML = `
-    <h2>Admin panel</h2>
-    <p>Foydalanuvchilar: ${stats.users} · Faol e‘lonlar: ${stats.active} · Tekshiruvda: ${stats.pending}</p>
-    <h3>Tekshiruvdagi e‘lonlar</h3>
-    ${prods.map((p) => `<div class="row">
-        <a href="#/product/${p.id}">${esc(p.title)} — ${money(p.price)}<br><small>${esc(p.seller_name)}</small></a>
-        <span>
-          <button data-st="active" data-id="${p.id}">Tasdiqlash</button>
-          <button class="danger" data-st="rejected" data-id="${p.id}">Rad etish</button>
-        </span></div>`).join('') || '<p>Tekshiruvda e‘lon yo‘q</p>'}
-    <h3>Foydalanuvchilar</h3>
-    ${users.map((u) => `<div class="row">
-        <span>${esc(u.name)} · ${esc(u.phone)} · ${u.role}</span>
-        ${u.role !== 'admin' ? `<button class="${u.blocked ? '' : 'danger'}" data-block="${u.id}" data-val="${u.blocked ? 0 : 1}">
-          ${u.blocked ? 'Blokdan chiqarish' : 'Bloklash'}</button>` : ''}
-      </div>`).join('')}`;
-  app.querySelectorAll('[data-st]').forEach((b) => b.onclick = async () => {
-    await api('POST', `/api/admin/products/${b.dataset.id}/status`, { status: b.dataset.st });
-    admin();
-  });
-  app.querySelectorAll('[data-block]').forEach((b) => b.onclick = async () => {
-    await api('POST', `/api/admin/users/${b.dataset.block}/block`, { blocked: b.dataset.val === '1' });
-    admin();
-  });
-}
-
 // ---------- Router ----------
 const routes = {
   '': home,
@@ -219,7 +186,7 @@ const routes = {
   chats,
   product: (id) => product(id),
   chat: (id) => chat(id),
-  admin,
+  admin: () => adminPanel(),
 };
 
 async function render() {

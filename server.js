@@ -247,8 +247,8 @@ app.get('/api/admin/stats', adminOnly, wrap(async (req, res) => {
 }));
 
 app.get('/api/admin/products', adminOnly, wrap(async (req, res) => {
-  const status = ['pending', 'active', 'rejected'].includes(req.query.status) ? req.query.status : 'pending';
-  const rows = await col('products').find({ status }).sort({ _id: -1 }).toArray();
+  const status = ['pending', 'active', 'rejected'].includes(req.query.status) ? req.query.status : null;
+  const rows = await col('products').find(status ? { status } : {}).sort({ _id: -1 }).toArray();
   res.json(await attachSeller(rows));
 }));
 
@@ -270,6 +270,49 @@ app.post('/api/admin/users/:id/block', adminOnly, wrap(async (req, res) => {
   const oid = toOid(req.params.id);
   if (!oid) return res.status(404).json({ error: 'Topilmadi' });
   await col('users').updateOne({ _id: oid, role: { $ne: 'admin' } }, { $set: { blocked: !!req.body.blocked } });
+  res.json({ ok: true });
+}));
+
+// Admin: tahrirlash va o'chirish
+app.put('/api/admin/products/:id', adminOnly, wrap(async (req, res) => {
+  const oid = toOid(req.params.id);
+  if (!oid) return res.status(404).json({ error: 'Topilmadi' });
+  const b = req.body;
+  const set = {};
+  if (b.title !== undefined) {
+    set.title = String(b.title).trim();
+    if (!set.title) return res.status(400).json({ error: 'Nomi bo‘sh bo‘lmasin' });
+  }
+  if (b.description !== undefined) set.description = String(b.description).slice(0, 3000);
+  if (b.category !== undefined) set.category = String(b.category);
+  if (b.city !== undefined) set.city = String(b.city).slice(0, 60);
+  if (b.price !== undefined) {
+    const p = Number(b.price);
+    if (!(p > 0)) return res.status(400).json({ error: 'Narx noto‘g‘ri' });
+    set.price = p;
+  }
+  if (b.retail_price !== undefined) {
+    const r = Number(b.retail_price);
+    set.retail_price = r > 0 ? r : null;
+  }
+  if (b.currency !== undefined) set.currency = b.currency === 'USD' ? 'USD' : "so'm";
+  if (b.phones !== undefined) {
+    const ph = (Array.isArray(b.phones) ? b.phones : []).map(normPhone).filter(Boolean).slice(0, 3);
+    if (!ph.length) return res.status(400).json({ error: 'Kamida bitta to‘g‘ri telefon kiriting' });
+    set.phones = ph;
+  }
+  if (b.status !== undefined) {
+    if (!['pending', 'active', 'rejected'].includes(b.status)) return res.status(400).json({ error: 'Noto‘g‘ri holat' });
+    set.status = b.status;
+  }
+  if (Object.keys(set).length) await col('products').updateOne({ _id: oid }, { $set: set });
+  res.json({ ok: true });
+}));
+
+app.delete('/api/admin/products/:id', adminOnly, wrap(async (req, res) => {
+  const oid = toOid(req.params.id);
+  if (!oid) return res.status(404).json({ error: 'Topilmadi' });
+  await deleteProduct(oid);
   res.json({ ok: true });
 }));
 
